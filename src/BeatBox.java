@@ -1,18 +1,23 @@
 import javax.sound.midi.*;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.io.*;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 
 public class BeatBox {
 
-    JPanel mainPanel;
-    ArrayList<JCheckBox> checkBoxList;
-    Sequencer sequencer;
-    Sequence sequence;
-    Track track;
-    JFrame theFrame;
+    private JPanel mainPanel;
+    private ArrayList<JCheckBox> checkBoxList;
+    private Sequencer sequencer;
+    private Sequence sequence;
+    private Track track;
+    private JFrame theFrame;
+    private Path folder;
 
     String[] instrumentNames = {"Bass Drum", "Closed Hi-Hat",
         "Open Hi-Hat", "Acoustic Share", "Crash Cymbal", "Hand Clap",
@@ -31,46 +36,97 @@ public class BeatBox {
         JPanel backgroung = new JPanel(layout);
         backgroung.setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
 
-        checkBoxList = new ArrayList<JCheckBox>();
+        checkBoxList = new ArrayList<>();
         Box buttonBox = new Box(BoxLayout.Y_AXIS);
 
         JButton start = new JButton("Start");
-        start.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                buildTrackAndStart();
-            }
-        });
+        start.addActionListener(e -> buildTrackAndStart());
         buttonBox.add(start);
 
         JButton stop = new JButton("Stop");
-        stop.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                sequencer.stop();
-            }
-        });
+        stop.addActionListener(e -> sequencer.stop());
         buttonBox.add(stop);
 
         JButton upTempo = new JButton("Tempo Up");
-        upTempo.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                float tempoFactor = sequencer.getTempoFactor();
-                sequencer.setTempoFactor((float) (tempoFactor*1.03));
-            }
+        upTempo.addActionListener(e -> {
+            float tempoFactor = sequencer.getTempoFactor();
+            sequencer.setTempoFactor((float) (tempoFactor*1.03));
         });
         buttonBox.add(upTempo);
 
         JButton downTempo = new JButton("Tempo Down");
-        downTempo.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                float tempoFactor = sequencer.getTempoFactor();
-                sequencer.setTempoFactor((float) (tempoFactor * .97));
-            }
+        downTempo.addActionListener(e -> {
+            float tempoFactor = sequencer.getTempoFactor();
+            sequencer.setTempoFactor((float) (tempoFactor * .97));
         });
         buttonBox.add(downTempo);
+
+        JButton open = new JButton("Select a folder...");
+        open.addActionListener(e -> {
+            JFileChooser fc = new JFileChooser();
+            fc.setCurrentDirectory(new File(System.getProperty("user.home")+ "\\Desktop"));
+            fc.setDialogTitle("Select a folder to save");
+            fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
+            if(fc.showOpenDialog(open) == JFileChooser.APPROVE_OPTION){
+                folder = Paths.get(fc.getSelectedFile().getAbsolutePath());
+            }
+        });
+        buttonBox.add(open);
+
+        JButton serialize = new JButton("Save");
+        serialize.addActionListener(e -> {
+            if(folder == null){
+                JOptionPane.showMessageDialog(null, "Choose the directory to save");
+                return;
+            }
+            boolean[] checkboxState = new boolean[256];
+
+            for(int i = 0; i < 256; i++){
+                JCheckBox check = checkBoxList.get(i);
+                if(check.isSelected())
+                    checkboxState[i]=true;
+            }
+            DateFormat dateFormat = new SimpleDateFormat("mm_ss");
+            Calendar cal = Calendar.getInstance();
+            try {
+                FileOutputStream fileStream = new FileOutputStream(folder.toString() +
+                        "\\BeatBox_" + dateFormat.format(cal.getTime()) +".txt");
+                ObjectOutputStream os = new ObjectOutputStream(fileStream);
+                os.writeObject(checkboxState);
+                os.close();
+            }catch (Exception ex){
+                ex.printStackTrace();
+            }
+        });
+        buttonBox.add(serialize);
+
+        JButton restore = new JButton("Download");
+        restore.addActionListener(e -> {
+            JFileChooser fc = new JFileChooser();
+            fc.setCurrentDirectory(new File(System.getProperty("user.home") + "\\Desktop"));
+            fc.setDialogTitle("Select a folder to save");
+            fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
+            if(fc.showOpenDialog(restore) == JFileChooser.APPROVE_OPTION){
+                boolean[] checkboxState;
+                try{
+                    FileInputStream fileIn = new FileInputStream(fc.getSelectedFile().getAbsoluteFile());
+                    ObjectInputStream is = new ObjectInputStream(fileIn);
+                    checkboxState = (boolean[]) is.readObject();
+                    is.close();
+
+                    for(int i = 0;i<256;i++){
+                        JCheckBox check = checkBoxList.get(i);
+                        check.setSelected(checkboxState[i]);
+                    }
+                }catch (Exception ex){
+                    ex.printStackTrace();
+                }
+                sequencer.stop();
+                buildTrackAndStart();
+            }
+        });
+        buttonBox.add(restore);
 
         Box nameBox = new Box(BoxLayout.Y_AXIS);
         for(int i = 0; i<16; i ++){
@@ -115,7 +171,7 @@ public class BeatBox {
     }
 
     public void buildTrackAndStart(){
-        int[] trackList = null;
+        int[] trackList;
 
         sequence.deleteTrack(track);
         track = sequence.createTrack();
@@ -127,7 +183,7 @@ public class BeatBox {
 
             for(int j = 0; j<16; j++){
 
-                JCheckBox jc = (JCheckBox) checkBoxList.get(j+(16*i));
+                JCheckBox jc = checkBoxList.get(j+(16*i));
                 if(jc.isSelected()){
                     trackList[j]= key;
                 }else {
